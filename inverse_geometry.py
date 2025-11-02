@@ -13,8 +13,6 @@ from tools import collision, getcubeplacement, setcubeplacement, projecttojointl
 from config import LEFT_HOOK, RIGHT_HOOK, LEFT_HAND, RIGHT_HAND, EPSILON
 from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
 
-from tools import setcubeplacement
-
 import time
 from scipy.optimize import fmin_bfgs
 from setup_meshcat import updatevisuals
@@ -24,20 +22,18 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     setcubeplacement(robot, cube, cubetarget)
     #TODO implement
     
-    #Get frame IDs for robot hands
     handidL = robot.model.getFrameId(LEFT_HAND)
     handidR = robot.model.getFrameId(RIGHT_HAND)
     
-    #Get target hook poses from cube
     oMhookL = getcubeplacement(cube, LEFT_HOOK)
     oMhookR = getcubeplacement(cube, RIGHT_HOOK)
     
     qBias = robot.q0.copy() 
-    COLLISION_WEIGHT = 1e5
-    POSTURAL_BIAS = 1e-2
+    COLLISION_WEIGHT = 1e3
+    POSTURAL_BIAS = 1e-4
+    GRASP_TOLERANCE = 1e-3
     
     def cost(q):
-        #project q to joint limits
         qProj = projecttojointlimits(robot, q)
         pin.framesForwardKinematics(robot.model, robot.data, qProj)
         oMhandL = robot.data.oMf[handidL]
@@ -67,7 +63,6 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     grasp_error = norm(pin.log(oMhandL.inverse() * oMhookL).vector) ** 2 + \
                   norm(pin.log(oMhandR.inverse() * oMhookR).vector) ** 2
     
-    GRASP_TOLERANCE = 1e-4
     success = (grasp_error < GRASP_TOLERANCE) and (not collision(robot, qFinal))
     
     #print ("TODO: implement me")
@@ -83,7 +78,8 @@ if __name__ == "__main__":
     q0,successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)
     qe,successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET,  viz)
     
+    #print(f"Success (Initial Pose q0): {successinit}")
+    #print(f"Success (End Pose qe):   {successend}")
+    
     updatevisuals(viz, robot, cube, q0)
-    
-    
-    
+ 

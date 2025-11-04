@@ -24,14 +24,10 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     
     handidL = robot.model.getFrameId(LEFT_HAND)
     handidR = robot.model.getFrameId(RIGHT_HAND)
-    
+
     oMhookL = getcubeplacement(cube, LEFT_HOOK)
     oMhookR = getcubeplacement(cube, RIGHT_HOOK)
-    
-    qBias = robot.q0.copy() 
-    COLLISION_WEIGHT = 1e3
-    POSTURAL_BIAS = 1e-4
-    GRASP_TOLERANCE = 1e-3
+
     
     def cost(q):
         qProj = projecttojointlimits(robot, q)
@@ -41,9 +37,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         errL = norm(pin.log(oMhandL.inverse() * oMhookL).vector) ** 2
         errR = norm(pin.log(oMhandR.inverse() * oMhookR).vector) ** 2
         
-        collisionCost = COLLISION_WEIGHT * collision(robot, qProj)
-        posturalBias = POSTURAL_BIAS * norm(qProj - qBias) ** 2
-        return errL + errR + collisionCost + posturalBias
+        return errL + errR + EPSILON
     
     def callback(q):
         if viz:
@@ -52,18 +46,19 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
             time.sleep(1e-2)
     
     #optimisation
-    q0 = qcurrent.copy()
-    qOpt = fmin_bfgs(cost, q0, callback=callback)
+    qOpt = fmin_bfgs(cost, qcurrent, callback=callback)
     qFinal = projecttojointlimits(robot, qOpt)
     
     #recalculate cost
+    GRASP_TOLERANCE = 1e-3
+
     pin.framesForwardKinematics(robot.model, robot.data, qFinal)
     oMhandL = robot.data.oMf[handidL]
     oMhandR = robot.data.oMf[handidR]
     grasp_error = norm(pin.log(oMhandL.inverse() * oMhookL).vector) ** 2 + \
                   norm(pin.log(oMhandR.inverse() * oMhookR).vector) ** 2
     
-    success = (grasp_error < GRASP_TOLERANCE) and (not collision(robot, qFinal))
+    success = (grasp_error <= GRASP_TOLERANCE) and (not collision(robot, qFinal))
     
     #print ("TODO: implement me")
     return qFinal, success
@@ -76,10 +71,7 @@ if __name__ == "__main__":
     q = robot.q0.copy()
     
     q0,successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)
-    qe,successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET,  viz)
-    
-    #print(f"Success (Initial Pose q0): {successinit}")
-    #print(f"Success (End Pose qe):   {successend}")
+    qe,successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET, viz)
     
     updatevisuals(viz, robot, cube, q0)
  

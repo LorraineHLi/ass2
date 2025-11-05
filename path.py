@@ -103,7 +103,10 @@ def valid_edge(robot, cube, c_new, c_goal, q_new, discretisationsteps):
     c_final, q_final = new_conf(robot, cube, c_new, c_goal, q_new, discretisationsteps)
     
     goal_reached = distance(c_final, c_goal) < 1e-3
-    return goal_reached
+    if goal_reached:
+        return True, q_final # Return True and the new q for the goal
+    else:
+        return False, None
 
 def rrt(robot, cube, c_init, c_goal, qinit, qgoal, k, delta_c, discretisationsteps_newconf=5, discretisationsteps_validedge=10):
     G = [(None, c_init, qinit)]
@@ -127,9 +130,11 @@ def rrt(robot, cube, c_init, c_goal, qinit, qgoal, k, delta_c, discretisationste
         add_edge_and_vertex(G, nearest_idx, c_new, q_new)
         
         #try to connect to goal
-        if valid_edge(robot, cube, c_new, c_goal, q_new, discretisationsteps_validedge):
+        is_valid, q_goal_new = valid_edge(robot, cube, c_new, c_goal, q_new, discretisationsteps_validedge)
+        if is_valid:
             print("RRT: PATH FOUND!")
-            add_edge_and_vertex(G, new_idx, c_goal, qgoal)
+            # We add the original qgoal, as that is the desired target config
+            add_edge_and_vertex(G, new_idx, c_goal, q_goal_new) 
             return G, True
     
     print("RRT: Path not found within iteration limit")
@@ -167,18 +172,27 @@ def shortcut(robot, cube, path, cube_placements, delta_c, discretisationsteps):
     changed = True
     while changed:
         changed = False
-        for i in range(len(new_path)):
+        # Must use len(new_path) as the list length changes
+        for i in range(len(new_path)): 
             for j in reversed(range(i+2, len(new_path))):  
-                if valid_edge(robot, cube, new_cube_placements[i], new_cube_placements[j], 
-                             new_path[i], discretisationsteps):
+                
+                # Use the 'discretisationsteps' parameter, not a hardcoded value
+                is_valid, q_j_new = valid_edge(robot, cube, new_cube_placements[i], new_cube_placements[j], 
+                                                new_path[i], discretisationsteps)
+                
+                if is_valid:
                     # Remove nodes between i and j
                     new_path = new_path[:i+1] + new_path[j:]
                     new_cube_placements = new_cube_placements[:i+1] + new_cube_placements[j:]
-                    print(f"Shortcut: Removed {j-i-1} nodes between {i} and {j}")
+                    
+                    # Update the robot config for the 'j' node
+                    new_path[i+1] = q_j_new
+                    
+                    print(f"Shortcut: Removed {j-i-1} nodes between {i} and {j}. New length: {len(new_path)}")
                     changed = True
                     break  # Restart the search since we modified the lists
             if changed:
-                break
+                break # Restart the outer 'while' loop
     
     print(f"Shortcut: Final path has {len(new_path)} configurations")
     return new_path, new_cube_placements
@@ -212,7 +226,7 @@ def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
 
 
 def displaypath(robot,path,dt,viz):
-    for i, q in enumerate(path):
+    for q in path:
         viz.display(q)
         time.sleep(dt)
 
@@ -233,5 +247,5 @@ if __name__ == "__main__":
     
     path,cube_placements = computepath(robot, cube, q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
     
-    displaypath(robot,path, dt=0.1*30,viz=viz) #you ll probably want to lower dt
+    displaypath(robot,path,dt=0.5,viz=viz) #you ll probably want to lower dt
     

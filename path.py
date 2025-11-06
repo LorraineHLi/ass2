@@ -10,10 +10,12 @@ import pinocchio as pin
 import numpy as np
 from numpy.linalg import pinv, norm
 
-from config import LEFT_HAND, RIGHT_HAND
+from config import LEFT_HAND, RIGHT_HAND, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
 import time
 
 from inverse_geometry import computeqgrasppose
+from tools import collision, getcubeplacement, setcubeplacement, projecttojointlimits
+from setup_meshcat import updatevisuals
 
 '''
 sample cube
@@ -52,14 +54,14 @@ def nearest_vertex(G, c_rand):
     min_dist = float('inf')
     idx = -1
     for (i, node) in enumerate(G):
-        dist = distance(node[1], c_rand) 
+        dist = distance(node[2], c_rand) 
         if dist < min_dist:
             min_dist = dist
             idx = i
     return idx
 
-def add_edge_and_vertex(G, parent, c, q):
-    G.append((parent, c, q))
+def add_edge_and_vertex(G, parent, q, c):
+    G.append((parent, q, c))
     
 def interpolate_cube(cube1, cube2, t):    
     '''interpolate between two cube placements'''
@@ -93,23 +95,23 @@ def new_conf(robot, cube, c_near, c_rand, q_near, discretisationsteps, delta_c=N
         
         q_interp, success = computeqgrasppose(robot, last_valid_q, cube, c_interp, None)
         if not success:
-            return last_valid_c, last_valid_q
+            return last_valid_q, last_valid_c
         last_valid_c = c_interp
         last_valid_q = q_interp
-    return c_end, last_valid_q
+    return last_valid_q, c_end
 
 def valid_edge(robot, cube, c_new, c_goal, q_new, discretisationsteps):
     '''check if can connect c_new to c_goal'''   
-    c_final, q_final = new_conf(robot, cube, c_new, c_goal, q_new, discretisationsteps)
+    q_final, c_final = new_conf(robot, cube, c_new, c_goal, q_new, discretisationsteps)
     
     goal_reached = distance(c_final, c_goal) < 1e-3
     if goal_reached:
-        return True, q_final # Return True and the new q for the goal
+        return True, q_final, c_final # Return True and the new q for the goal
     else:
-        return False, None
+        return False, None, None
 
 def rrt(robot, cube, c_init, c_goal, qinit, qgoal, k, delta_c, discretisationsteps_newconf=5, discretisationsteps_validedge=10):
-    G = [(None, c_init, qinit)]
+    G = [(None, qinit, c_init)]
     
     for iteration in range(k):
         #sample random cube placement
@@ -119,22 +121,22 @@ def rrt(robot, cube, c_init, c_goal, qinit, qgoal, k, delta_c, discretisationste
         
         #find nearest vertex
         nearest_idx = nearest_vertex(G, c_rand)
-        parent_idx, c_near, q_near = G[nearest_idx]
+        parent_idx, q_near, c_near = G[nearest_idx]
                 
         #extend towards random sample
-        c_new, q_new = new_conf(robot, cube, c_near, c_rand, q_near, 
+        q_new, c_new = new_conf(robot, cube, c_near, c_rand, q_near, 
                                discretisationsteps_newconf, delta_c)
         
         #add new node to graph
         new_idx = len(G)
-        add_edge_and_vertex(G, nearest_idx, c_new, q_new)
+        add_edge_and_vertex(G, nearest_idx, q_new, c_new)
         
         #try to connect to goal
-        is_valid, q_goal_new = valid_edge(robot, cube, c_new, c_goal, q_new, discretisationsteps_validedge)
+        is_valid, q_goal_new, c_final = valid_edge(robot, cube, c_new, c_goal, q_new, discretisationsteps_validedge)
         if is_valid:
             print("RRT: PATH FOUND!")
             # We add the original qgoal, as that is the desired target config
-            add_edge_and_vertex(G, new_idx, c_goal, q_goal_new) 
+            add_edge_and_vertex(G, new_idx, q_goal_new, c_final) 
             return G, True
     
     print("RRT: Path not found within iteration limit")
@@ -143,50 +145,48 @@ def rrt(robot, cube, c_init, c_goal, qinit, qgoal, k, delta_c, discretisationste
 def getpath(G):
     '''reconstruct path from graph'''
     if not G:
-        return [], []
+        return []
     
     path = []
-    cube_placements = []
     node = G[-1]  
     
     while node[0] is not None:
-        path.insert(0, node[2])  
-        cube_placements.insert(0, node[1]) 
+        # Store as (robot_config, cube_placement) tuple
+        path.insert(0, (node[1], node[2]))  
         node = G[node[0]]  
     
-    path.insert(0, G[0][2])
-    cube_placements.insert(0, G[0][1])
+    # Add start node
+    path.insert(0, (G[0][1], G[0][2]))
     
-    return path, cube_placements
+    return path
 
-def shortcut(robot, cube, path, cube_placements, delta_c, discretisationsteps):
+def shortcut(robot, cube, path, delta_c, discretisationsteps):
     if len(path) <= 2:
-        return path, cube_placements
+        return path
     
     print(f"  [Shortcut]: Applying shortcut to path with {len(path)} nodes")
     
     # Make copies to avoid modifying while iterating
     new_path = path.copy()
-    new_cube_placements = cube_placements.copy()
     
     changed = True
     while changed:
         changed = False
-        # Must use len(new_path) as the list length changes
         for i in range(len(new_path)): 
             for j in reversed(range(i+2, len(new_path))):  
+                # Extract q and cube placement from the path tuples
+                q_i, c_i = new_path[i]
+                q_j, c_j = new_path[j]
                 
-                # Use the 'discretisationsteps' parameter, not a hardcoded value
-                is_valid, q_j_new = valid_edge(robot, cube, new_cube_placements[i], new_cube_placements[j], 
-                                                new_path[i], discretisationsteps)
+                # Check if we can create a valid edge from i to j
+                is_valid, q_j_new, c_final = valid_edge(robot, cube, c_i, c_j, q_i, discretisationsteps)
                 
                 if is_valid:
                     # Remove nodes between i and j
                     new_path = new_path[:i+1] + new_path[j:]
-                    new_cube_placements = new_cube_placements[:i+1] + new_cube_placements[j:]
                     
-                    # Update the robot config for the 'j' node
-                    new_path[i+1] = q_j_new
+                    # Update the robot config for the 'j' node (keep the same cube placement)
+                    new_path[i+1] = (q_j_new, c_final)
                     
                     print(f"Shortcut: Removed {j-i-1} nodes between {i} and {j}. New length: {len(new_path)}")
                     changed = True
@@ -195,7 +195,7 @@ def shortcut(robot, cube, path, cube_placements, delta_c, discretisationsteps):
                 break # Restart the outer 'while' loop
     
     print(f"Shortcut: Final path has {len(new_path)} configurations")
-    return new_path, new_cube_placements
+    return new_path
 
 def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
     '''compute collision-free path from qinit to qgoal under grasping constraints'''
@@ -211,23 +211,31 @@ def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
                       discretisationsteps_newconf, discretisationsteps_validedge)
     
     if foundpath:
-        path, cube_placements = getpath(G)
+        path = getpath(G)
         print(f"Found path with {len(path)} configurations")
-#         path, cube_placements = shortcut(robot, cube, path, cube_placements, delta_c, discretisationsteps_validedge)
-#         print(f"After shortcut: {len(path)} configurations")
+        path = shortcut(robot, cube, path, delta_c, discretisationsteps_validedge)
+        print(f"After shortcut: {len(path)} configurations")
         
-        return path, cube_placements
+        return path
     else:
         print("No path found")
-        return [],[]
+        return []
     
     #return [qinit, qgoal]
     #pass
 
 
-def displaypath(robot,path,dt,viz):
-    for q in path:
-        viz.display(q)
+def displaypath(robot,cube,path,dt,viz):
+#     for q in path:
+#         viz.display(q)
+#         time.sleep(dt)
+
+
+    print(f"Displaying path with {len(path)} configurations...")
+    
+    for (q, cube_placement) in path:
+        setcubeplacement(robot, cube, cube_placement)
+        updatevisuals(viz, robot, cube, q)
         time.sleep(dt)
 
 if __name__ == "__main__":
@@ -245,7 +253,7 @@ if __name__ == "__main__":
     if not(successinit and successend):
         print ("error: invalid initial or end configuration")
     
-    path,cube_placements = computepath(robot, cube, q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
+    path = computepath(robot, cube, q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
     
-    displaypath(robot,path,dt=0.5,viz=viz) #you ll probably want to lower dt
-    
+    displaypath(robot,cube,path,dt=0.5*5,viz=viz) #you ll probably want to lower dt
+        

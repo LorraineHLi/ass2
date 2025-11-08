@@ -100,17 +100,6 @@ def maketraj(path,T): #TODO compute a real trajectory !
     q_of_t = Bezier(control_points,t_max=T)
     vq_of_t = q_of_t.derivative(1)
     vvq_of_t = q_of_t.derivative(2)
-    
-    # Test the trajectory
-    test_t = 0.0
-    try:
-        test_q = q_of_t(test_t)
-        test_v = vq_of_t(test_t)
-        test_a = vvq_of_t(test_t)
-        print("Trajectory test successful")
-    except Exception as e:
-        print(f"Trajectory test failed: {e}")
-        raise
         
     return q_of_t, vq_of_t, vvq_of_t
 
@@ -119,57 +108,20 @@ if __name__ == "__main__":
         
     from tools import setupwithpybullet, setupwithpybulletandmeshcat, rununtil
     from config import DT
+    from setup_meshcat import updatevisuals
     
-    robot, sim, cube = setupwithpybullet()
+#     robot, sim, cube = setupwithpybullet()
+    robot, sim, cube, viz = setupwithpybulletandmeshcat()
     
     from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET    
     from inverse_geometry import computeqgrasppose
     from path import computepath
     
-#     print("--- Running Optional Task 0: Control without the cube ---")
-    
-#     # 1. Compute a valid, non-colliding starting pose (q_start)
-#     #    (We use the pose for the initial cube placement, as we know it's valid)
-#     q_start, success_start = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
-#     if not success_start:
-#         print("CRITICAL: Failed to compute a valid starting pose q_start. Exiting.")
-#         exit()
-
-#     # 2. Define a "target" pose "above the starting position".
-#     #    Create a new SE(3) pose 10cm above the cube's start.
-#     CUBE_ABOVE_PLACEMENT = CUBE_PLACEMENT.copy()
-#     CUBE_ABOVE_PLACEMENT.translation[2] += 0.10 # Add 10cm to Z
-    
-#     #    Solve IG for this "above" pose.
-#     q_target, success_target = computeqgrasppose(robot, q_start, cube, CUBE_ABOVE_PLACEMENT, None)
-#     if not success_target:
-#         print("CRITICAL: Failed to compute a valid target pose q_target. Exiting.")
-#         exit()
-        
-#     print("Successfully found safe start and target configurations for Optional Task 0.")
-
-#     # 3. Create a simple path and trajectory
-#     path = [q_start, q_target]
-#     total_time = 4.0
-#     trajs = maketraj(path, total_time) 
-    
-#     # 4. Set initial simulation state
-#     sim.setqsim(q_start)
-    
-#     # 5. Run control loop
-#     print(f"Running simulation for {total_time}s...")
-#     tcur = 0.
-#     while tcur < total_time:
-#         rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
-#         tcur += DT
-    
-#     print("--- Optional Task 0 Complete ---")
-    ###################################
-    
     try:
         q0,successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
         qe,successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET,  None)
-        path,cube_placements = computepath(robot, cube, q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
+        path = computepath(robot, cube, q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
+        q_elements= [x[0] for x in path]
 
         if not path:
                 print("Error: No path found")
@@ -178,7 +130,7 @@ if __name__ == "__main__":
         print(f"Path has {len(path)} configurations")
 
         # Print first and last configurations for debugging
-        print(f"First config: {path[0]}")
+        print(f"First config: {path[0][0]}")
 
         #setting initial configuration
         sim.setqsim(q0)
@@ -188,13 +140,15 @@ if __name__ == "__main__":
 
         print(f"Creating trajectory with total time: {total_time}")
 
-        trajs = maketraj(path, total_time)   
+        
+        trajs = maketraj(q_elements, total_time)   
 
         tcur = 0.
 
         while tcur < total_time:
-           rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
-           tcur += DT
+            rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
+            updatevisuals(viz, robot, cube, trajs[0](tcur))
+            tcur += DT
         print("Control loop completed successfully!")
     except Exception as e:
         print(f"Error in main: {e}")

@@ -16,6 +16,9 @@ import time
 from inverse_geometry import computeqgrasppose
 from tools import collision, getcubeplacement, setcubeplacement, projecttojointlimits
 from setup_meshcat import updatevisuals
+from tools import setupwithmeshcat
+from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
+from inverse_geometry import computeqgrasppose
 
 '''
 sample cube
@@ -213,8 +216,8 @@ def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
     if foundpath:
         path = getpath(G)
         print(f"Found path with {len(path)} configurations")
-        path = shortcut(robot, cube, path, delta_c, discretisationsteps_validedge)
-        print(f"After shortcut: {len(path)} configurations")
+#         path = shortcut(robot, cube, path, delta_c, discretisationsteps_validedge)
+#         print(f"After shortcut: {len(path)} configurations")
         
         return path
     else:
@@ -239,9 +242,7 @@ def displaypath(robot,cube,path,dt,viz):
         time.sleep(dt)
 
 if __name__ == "__main__":
-    from tools import setupwithmeshcat
-    from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
-    from inverse_geometry import computeqgrasppose
+    
     
     robot, cube, viz = setupwithmeshcat()
     
@@ -256,4 +257,3 @@ if __name__ == "__main__":
     path = computepath(robot, cube, q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
     
     displaypath(robot,cube,path,dt=0.5*5,viz=viz) #you ll probably want to lower dt
-        

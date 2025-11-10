@@ -16,53 +16,48 @@ Kp = 300.               # proportional gain (P of PD)
 Kv = 2 * np.sqrt(Kp)   # derivative gain (D of PD)
 
 def controllaw(sim, robot, trajs, tcurrent, cube):
-    try:
-        q, vq = sim.getpybulletstate()
-        #TODO 
-        q_des = trajs[0](tcurrent)
-        vq_des = trajs[1](tcurrent) 
-        aq_des = trajs[2](tcurrent)
+    q, vq = sim.getpybulletstate()
+    #TODO 
+    q_des = trajs[0](tcurrent)
+    vq_des = trajs[1](tcurrent) 
+    aq_des = trajs[2](tcurrent)
 
-        q_des = np.array(q_des)
-        vq_des = np.array(vq_des)
-        aq_des = np.array(aq_des)
+    q_des = np.array(q_des)
+    vq_des = np.array(vq_des)
+    aq_des = np.array(aq_des)
 
-        err_q = q_des - q # Position error
-        err_vq = vq_des - vq # Velocity error
+    err_q = q_des - q # Position error
+    err_vq = vq_des - vq # Velocity error
 
-        print(f"t: {tcurrent:.2f}, max error: {np.max(np.abs(err_q)):.4f}")
+    print(f"t: {tcurrent:.2f}, max error: {np.max(np.abs(err_q)):.4f}")
 
-        #print(f"q size: {q.shape}, q_des size: {q_des.shape}")
-        #print(f"bulletCtrlJointsInPinOrder: {sim.bulletCtrlJointsInPinOrder}")
-        #print(f"Number of controlled joints: {len(sim.bulletCtrlJointsInPinOrder)}")
+    #print(f"q size: {q.shape}, q_des size: {q_des.shape}")
+    #print(f"bulletCtrlJointsInPinOrder: {sim.bulletCtrlJointsInPinOrder}")
+    #print(f"Number of controlled joints: {len(sim.bulletCtrlJointsInPinOrder)}")
 
-        M = pin.crba(robot.model, robot.data, q)
-        nle = pin.nle(robot.model, robot.data, q, vq)
-        #print(f"M shape: {M.shape}, nle shape: {nle.shape}")
+    M = pin.crba(robot.model, robot.data, q)
+    nle = pin.nle(robot.model, robot.data, q, vq)
+    #print(f"M shape: {M.shape}, nle shape: {nle.shape}")
 
-        tau = M @ (aq_des + Kp * err_q + Kv * err_vq) + nle
-        #print(f"tau shape: {tau.shape}")
+    tau = M @ (aq_des + Kp * err_q + Kv * err_vq) + nle
+    #print(f"tau shape: {tau.shape}")
 
-        torques_list = [0.0] * len(sim.bulletCtrlJointsInPinOrder)
+    torques_list = [0.0] * len(sim.bulletCtrlJointsInPinOrder)
 
-        # Iterate 0 to 14 (robot.model.nv = 15)
-        for i in range(robot.model.nv):
-            # Pinocchio velocity index 'i' (0-14) maps to joint ID 'i+1' (1-15)
-            joint_id = i + 1 
+    # Iterate 0 to 14 (robot.model.nv = 15)
+    for i in range(robot.model.nv):
+        # Pinocchio velocity index 'i' (0-14) maps to joint ID 'i+1' (1-15)
+        joint_id = i + 1 
 
-            # Check if this Pinocchio joint ID is in the list PyBullet controls
-            if joint_id in sim.bulletCtrlJointsInPinOrder:
-                # Get the index in PyBullet's 15-element list
-                pybullet_index = sim.bulletCtrlJointsInPinOrder.index(joint_id)
-                # Apply the calculated torque (tau[i]) to the correct slot
-                torques_list[pybullet_index] = float(tau[i])
+        # Check if this Pinocchio joint ID is in the list PyBullet controls
+        if joint_id in sim.bulletCtrlJointsInPinOrder:
+            # Get the index in PyBullet's 15-element list
+            pybullet_index = sim.bulletCtrlJointsInPinOrder.index(joint_id)
+            # Apply the calculated torque (tau[i]) to the correct slot
+            torques_list[pybullet_index] = float(tau[i])
 
-        sim.step(torques_list)
-    except Exception as e:
-        print(f"Error in control law: {e}")
-        # Send zero torques to prevent crashes
-        torques = [0.0 for _ in sim.bulletCtrlJointsInPinOrder]
-        sim.step(torques)
+    sim.step(torques_list)
+
     
     #torques = [0.0 for _ in sim.bulletCtrlJointsInPinOrder]
     #sim.step(torques)
@@ -117,46 +112,36 @@ if __name__ == "__main__":
     from inverse_geometry import computeqgrasppose
     from path import computepath
     
-    try:
-        q0,successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
-        qe,successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET,  None)
-        path = computepath(robot, cube, q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
-        q_elements= [x[0] for x in path]
+    q0,successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
+    qe,successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET,  None)
+    path = computepath(robot, cube, q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
+    q_elements= [x[0] for x in path]
 
-        if not path:
-                print("Error: No path found")
-                exit()
+    if not path:
+            print("Error: No path found")
+            exit()
 
-        print(f"Path has {len(path)} configurations")
+    print(f"Path has {len(path)} configurations")
 
-        # Print first and last configurations for debugging
-        print(f"First config: {path[0][0]}")
+    # Print first and last configurations for debugging
+    print(f"First config: {path[0][0]}")
 
-        #setting initial configuration
-        sim.setqsim(q0)
+    #setting initial configuration
+    sim.setqsim(q0)
 
-        #TODO this is just a random trajectory, you need to do this yourself
-        total_time=4.
+    #TODO this is just a random trajectory, you need to do this yourself
+    total_time=4.
 
-        print(f"Creating trajectory with total time: {total_time}")
+    print(f"Creating trajectory with total time: {total_time}")
 
-        
-        trajs = maketraj(q_elements, total_time)   
 
-        tcur = 0.
+    trajs = maketraj(q_elements, total_time)   
 
-        while tcur < total_time:
-            rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
-            updatevisuals(viz, robot, cube, trajs[0](tcur))
-            tcur += DT
-        print("Control loop completed successfully!")
-    except Exception as e:
-        print(f"Error in main: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    finally:
-        # Clean up
-        print("Cleaning up...")
-        sim.closeClient()
+    tcur = 0.
+
+    while tcur < total_time:
+        rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
+        updatevisuals(viz, robot, cube, trajs[0](tcur))
+        tcur += DT
+    print("Control loop completed successfully!")
     

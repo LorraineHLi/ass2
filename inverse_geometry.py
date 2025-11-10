@@ -46,7 +46,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
             time.sleep(1e-2)
     
     #optimisation
-    qOpt = fmin_bfgs(cost, qcurrent, callback=callback, disp=True)
+    qOpt = fmin_bfgs(cost, qcurrent, callback=callback, disp=False)
     qFinal = projecttojointlimits(robot, qOpt)
     
     #recalculate cost

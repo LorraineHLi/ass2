@@ -40,9 +40,8 @@ def sample_valid_config(robot, cube):
         x = np.random.uniform(BOUNDS_X[0], BOUNDS_X[1])
         y = np.random.uniform(BOUNDS_Y[0], BOUNDS_Y[1])
         z = np.random.uniform(BOUNDS_Z[0], BOUNDS_Z[1])
-        rz = np.random.uniform(-np.pi/2, np.pi/2)
         
-        sampled_cube_placement = pin.SE3(pin.utils.rotate('z', rz), np.array([x, y, z]))
+        sampled_cube_placement = pin.SE3(np.eye(3), np.array([x, y, z]))
         
         q, success = computeqgrasppose(robot, robot.q0, cube, sampled_cube_placement, None)
         if success:

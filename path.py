@@ -33,7 +33,7 @@ def sample_valid_config(robot, cube):
     #define a reachable bounding box
     BOUNDS_X = [0.2, 0.6]
     BOUNDS_Y = [-0.4, 0.4]
-    BOUNDS_Z = [0.9, 1.2] 
+    BOUNDS_Z = [0.95, 1.7] 
     
     #sample cube placement
     for i in range(max_attempts):

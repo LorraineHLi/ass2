@@ -37,7 +37,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         errL = norm(pin.log(oMhandL.inverse() * oMhookL).vector) ** 2
         errR = norm(pin.log(oMhandR.inverse() * oMhookR).vector) ** 2
         
-        return errL + errR + EPSILON
+        return errL + errR
     
     def callback(q):
         if viz:

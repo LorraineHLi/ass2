@@ -16,88 +16,74 @@ from config import LEFT_HAND, RIGHT_HAND
 Kp = 300.               # proportional gain (P of PD)
 Kv = 2 * np.sqrt(Kp)   # derivative gain (D of PD)
 
-GRASP_FORCE = 90.0  # Squeeze force along world Y-axis
-LIFT_FORCE = 45.0   # Lifting force along world Z-axis
+GRASP_FORCE = 90.0  #squeeze force along world Y-axis
+LIFT_FORCE = 45.0   #lifting force along world Z-axis
 
 def controllaw(sim, robot, trajs, tcurrent, cube):
     q, vq = sim.getpybulletstate()
     
-    # Get reference trajectory values
+    #get reference trajectory values
     q_ref = np.array(trajs[0](tcurrent))
     vq_ref = np.array(trajs[1](tcurrent))
     aq_ref = np.array(trajs[2](tcurrent))
 
-    # Compute errors
-    err_q = q - q_ref  # Position error
-    err_vq = vq - vq_ref  # Velocity error
+    #compute errors
+    err_q = q - q_ref
+    err_vq = vq - vq_ref
 
-    print(f"t: {tcurrent:.2f}, max error: {np.max(np.abs(err_q)):.4f}")
+    print(f"t: {tcurrent:.2f}, max position error: {np.max(np.abs(err_q)):.4f}")
 
     M = pin.crba(robot.model, robot.data, q)
     nle = pin.nle(robot.model, robot.data, q, vq)
 
+    #desired acceleration
     aq_des = aq_ref - Kp * err_q - Kv * err_vq
     tau_motion = M @ aq_des + nle
     
     pin.framesForwardKinematics(robot.model, robot.data, q)
     pin.computeJointJacobians(robot.model, robot.data, q)
 
-    # Get frame IDs for hands
     left_hand_id = robot.model.getFrameId(LEFT_HAND)
     right_hand_id = robot.model.getFrameId(RIGHT_HAND)
 
-    # Get Jacobians in world frame
+    #get Jacobians in world frame
     J_L = pin.getFrameJacobian(robot.model, robot.data, left_hand_id, pin.LOCAL_WORLD_ALIGNED)
     J_R = pin.getFrameJacobian(robot.model, robot.data, right_hand_id, pin.LOCAL_WORLD_ALIGNED)
 
-    # Define 6D force vectors [fx, fy, fz, tx, ty, tz]
-    # Left hand: squeezes in +Y, lifts in +Z
+    #6D force vectors [fx, fy, fz, tx, ty, tz]
+    #left hand: squeezes in +Y, lifts in +Z
     f_L_vec = np.array([0, -GRASP_FORCE, LIFT_FORCE, 0, 0, 0])
-    # Right hand: squeezes in -Y, lifts in +Z
+    #right hand: squeezes in -Y, lifts in +Z
     f_R_vec = np.array([0, GRASP_FORCE, LIFT_FORCE, 0, 0, 0])
 
-    # Compute torques from forces: tau_force = J^T * f
+    #compute torques from forces: tau_force = J^T * f
     tau_force = J_L.T @ f_L_vec + J_R.T @ f_R_vec
 
-    # --- 3. Combine Torques ---
-    # Final torque is motion + external forces 
+    #final torque is motion + external forces 
     tau = tau_motion + tau_force
 
-    # Convert to list for pybullet
     torques_list = tau.tolist()
-
-    # Apply torques
     sim.step(torques_list)
-
     
 def maketraj(path, T):
     print(f"Creating trajectory from path with {len(path)} points")
     
-    # Extract all joint configurations (q) from the path
+    #extract all joint configurations (q) from the path
     q_points = [p[0] for p in path]
     
-    if len(q_points) < 2:
-        # Handle edge case: path is too short
-        q_static = q_points[0] if q_points else robot.q0 # Failsafe
-        control_points = [q_static, q_static, q_static]
-    else:
-        # Use waypoints as control points
-        # Repeat start and end points 3 times to ensure 0 velocity and 0 acceleration
-        q_start = q_points[0]
-        q_end = q_points[-1]
-        
-        # Get intermediate points (if any)
-        middle_points = q_points[1:-1]
-        
-        # Build control points list: [q_start, q_start, q_start, ...middle..., q_end, q_end, q_end]
-        control_points = [q_start, q_start, q_start] + middle_points + [q_end, q_end, q_end]
+    #repeat start and end points 3 times to ensure 0 velocity and 0 acceleration
+    q_start = q_points[0]
+    q_end = q_points[-1]
 
-    # Create the Bezier curve for joint positions
+    middle_points = q_points[1:-1]
+    control_points = [q_start, q_start, q_start] + middle_points + [q_end, q_end, q_end]
+
+    #Bezier curve for joint positions
     q_of_t = Bezier(control_points, t_max=T)
     
-    # Get the derivatives for velocity and acceleration
+    #get the derivatives for velocity and acceleration
     vq_of_t = q_of_t.derivative(1)
-    aq_of_t = vq_of_t.derivative(1) # aq_of_t is the same as vvq_of_t
+    aq_of_t = vq_of_t.derivative(1) 
     
     return q_of_t, vq_of_t, aq_of_t
 
@@ -108,7 +94,6 @@ if __name__ == "__main__":
     from config import DT
     from setup_meshcat import updatevisuals
     
-#     robot, sim, cube = setupwithpybullet()
     robot, sim, cube, viz = setupwithpybulletandmeshcat()
     
     from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET    
@@ -122,21 +107,20 @@ if __name__ == "__main__":
         print("Error: Could not compute grasp poses")
         exit()
         
-    path = computepath(robot, cube, q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)#includes tuples (q,cube)
+    path = computepath(robot, cube, q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)#path includes tuples (q,cube)
 
     if not path:
         print("Error: Path computation failed, no path found.")
         exit()
 
-    # Setting initial configuration
+    #setting initial configuration
     sim.setqsim(q0)
 
-    # Create trajectory
+    #create trajectory
     total_time = 4.
     trajs = maketraj(path, total_time)   
     tcur = 0.
 
-    print("Starting simulation... Press Ctrl+C to stop.")
     while tcur < total_time:
         rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
         updatevisuals(viz, robot, cube, trajs[0](tcur))

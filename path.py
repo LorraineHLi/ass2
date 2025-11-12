@@ -21,10 +21,11 @@ from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
 from inverse_geometry import computeqgrasppose
 
 '''
-sample cube
-computeqgrasppose to find configuration
-G stores cube position with corresponding configuration grasping it, and parent like (parent,cube,q)
-interpolate based on cube position, not robot configuration'''
+Sample valid cube placement,
+Interpolation based on cube position, not robot configuration
+Call computeqgrasppose to find corresponding robot configuration,
+RRT stores parent node, cube placement with corresponding configuration grasping it, like (parent,q,c)
+'''
 
 def sample_valid_config(robot, cube):
     '''sample a valid configuration using inverse geometry'''
@@ -70,12 +71,7 @@ def interpolate_cube(cube1, cube2, t):
     #interpolate translation
     trans_interp = cube1.translation * (1 - t) + cube2.translation * t
     
-    #interpolate rotation
-    quat1 = pin.Quaternion(cube1.rotation)
-    quat2 = pin.Quaternion(cube2.rotation)
-    quat_interp = pin.Quaternion(quat1).slerp(t, quat2)
-    
-    return pin.SE3(quat_interp, trans_interp)
+    return pin.SE3(np.eye(3), trans_interp)
 
 def new_conf(robot, cube, c_near, c_rand, q_near, discretisationsteps, delta_c=None):
     '''return the closest configuration c_new such that the path c_near => c_new is the longest
@@ -100,7 +96,7 @@ def new_conf(robot, cube, c_near, c_rand, q_near, discretisationsteps, delta_c=N
             return last_valid_q, last_valid_c
         last_valid_c = c_interp
         last_valid_q = q_interp
-    return last_valid_q, c_end
+    return last_valid_q, last_valid_c
 
 def valid_edge(robot, cube, c_new, c_goal, q_new, discretisationsteps):
     '''check if can connect c_new to c_goal'''   
@@ -108,7 +104,7 @@ def valid_edge(robot, cube, c_new, c_goal, q_new, discretisationsteps):
     
     goal_reached = distance(c_final, c_goal) < 1e-3
     if goal_reached:
-        return True, q_final, c_final # Return True and the new q for the goal
+        return True, q_final, c_final
     else:
         return False, None, None
 
@@ -137,7 +133,6 @@ def rrt(robot, cube, c_init, c_goal, qinit, qgoal, k, delta_c, discretisationste
         is_valid, q_goal_new, c_final = valid_edge(robot, cube, c_new, c_goal, q_new, discretisationsteps_validedge)
         if is_valid:
             print("RRT: PATH FOUND!")
-            # We add the original qgoal, as that is the desired target config
             add_edge_and_vertex(G, new_idx, q_goal_new, c_final) 
             return G, True
     
@@ -153,11 +148,11 @@ def getpath(G):
     node = G[-1]  
     
     while node[0] is not None:
-        # Store as (robot_config, cube_placement) tuple
+        #store as (robot_config, cube_placement) tuple
         path.insert(0, (node[1], node[2]))  
         node = G[node[0]]  
     
-    # Add start node
+    #add start node
     path.insert(0, (G[0][1], G[0][2]))
     
     return path
@@ -168,7 +163,6 @@ def shortcut(robot, cube, path, delta_c, discretisationsteps):
     
     print(f"  [Shortcut]: Applying shortcut to path with {len(path)} nodes")
     
-    # Make copies to avoid modifying while iterating
     new_path = path.copy()
     
     changed = True
@@ -176,25 +170,25 @@ def shortcut(robot, cube, path, delta_c, discretisationsteps):
         changed = False
         for i in range(len(new_path)): 
             for j in reversed(range(i+2, len(new_path))):  
-                # Extract q and cube placement from the path tuples
+                #extract q and cube placement from the path tuples
                 q_i, c_i = new_path[i]
                 q_j, c_j = new_path[j]
                 
-                # Check if we can create a valid edge from i to j
+                #check if can create a valid edge from i to j
                 is_valid, q_j_new, c_final = valid_edge(robot, cube, c_i, c_j, q_i, discretisationsteps)
                 
                 if is_valid:
-                    # Remove nodes between i and j
+                    #remove nodes between i and j
                     new_path = new_path[:i+1] + new_path[j:]
                     
-                    # Update the robot config for the 'j' node (keep the same cube placement)
+                    #update the robot config for the 'j' node
                     new_path[i+1] = (q_j_new, c_final)
                     
                     print(f"Shortcut: Removed {j-i-1} nodes between {i} and {j}. New length: {len(new_path)}")
                     changed = True
-                    break  # Restart the search since we modified the lists
+                    break  #restart the search since modified the lists
             if changed:
-                break # Restart the outer 'while' loop
+                break 
     
     print(f"Shortcut: Final path has {len(new_path)} configurations")
     return new_path
@@ -217,22 +211,13 @@ def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
         print(f"Found path with {len(path)} configurations")
 #         path = shortcut(robot, cube, path, delta_c, discretisationsteps_validedge)
 #         print(f"After shortcut: {len(path)} configurations")
-        
         return path
     else:
         print("No path found")
         return []
-    
-    #return [qinit, qgoal]
-    #pass
 
 
 def displaypath(robot,cube,path,dt,viz):
-#     for q in path:
-#         viz.display(q)
-#         time.sleep(dt)
-
-
     print(f"Displaying path with {len(path)} configurations...")
     
     for (q, cube_placement) in path:
@@ -241,10 +226,8 @@ def displaypath(robot,cube,path,dt,viz):
         time.sleep(dt)
 
 if __name__ == "__main__":
-    
-    
-    robot, cube, viz = setupwithmeshcat()
-    
+      
+    robot, cube, viz = setupwithmeshcat()  
     
     q = robot.q0.copy()
     q0,successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)

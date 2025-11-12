@@ -18,7 +18,7 @@ MESHCAT_URL ="tcp://127.0.0.1:6000"
 USE_PYBULLET_GUI = USE_PYBULLET and True
 USE_PYBULLET_REALTIME = USE_PYBULLET and False
 
-DT = 1e-3*20 #simulation tick time (s)
+DT = 1e-3 #simulation tick time (s)
 EPSILON = 1e-3 #almost 0
 
 #the remaining variables should not be edited in theory

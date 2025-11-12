@@ -20,7 +20,6 @@ from setup_meshcat import updatevisuals
 def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     '''Return a collision free configuration grasping a cube at a specific location and a success flag'''
     setcubeplacement(robot, cube, cubetarget)
-    #TODO implement
     
     handidL = robot.model.getFrameId(LEFT_HAND)
     handidR = robot.model.getFrameId(RIGHT_HAND)
@@ -28,7 +27,6 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     oMhookL = getcubeplacement(cube, LEFT_HOOK)
     oMhookR = getcubeplacement(cube, RIGHT_HOOK)
 
-    
     def cost(q):
         qProj = projecttojointlimits(robot, q)
         pin.framesForwardKinematics(robot.model, robot.data, qProj)
@@ -36,7 +34,6 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         oMhandR = robot.data.oMf[handidR]
         errL = norm(pin.log(oMhandL.inverse() * oMhookL).vector) ** 2
         errR = norm(pin.log(oMhandR.inverse() * oMhookR).vector) ** 2
-        
         return errL + errR
     
     def callback(q):
@@ -46,21 +43,15 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
             time.sleep(1e-2)
     
     #optimisation
-    qOpt = fmin_bfgs(cost, qcurrent, callback=callback, disp=False)
+    qOpt = fmin_bfgs(cost, qcurrent, callback=callback, disp=True)
     qFinal = projecttojointlimits(robot, qOpt)
     
     #recalculate cost
     GRASP_TOLERANCE = 1e-3
 
-    pin.framesForwardKinematics(robot.model, robot.data, qFinal)
-    oMhandL = robot.data.oMf[handidL]
-    oMhandR = robot.data.oMf[handidR]
-    grasp_error = norm(pin.log(oMhandL.inverse() * oMhookL).vector) ** 2 + \
-                  norm(pin.log(oMhandR.inverse() * oMhookR).vector) ** 2
-    
+    grasp_error = cost(qFinal)
     success = (grasp_error <= GRASP_TOLERANCE) and (not collision(robot, qFinal))
     
-    #print ("TODO: implement me")
     return qFinal, success
             
 if __name__ == "__main__":

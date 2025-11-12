@@ -10,10 +10,14 @@ import numpy as np
 import pinocchio as pin
 from bezier import Bezier
 from path import computepath
+from config import LEFT_HAND, RIGHT_HAND
     
 # in my solution these gains were good enough for all joints but you might want to tune this.
 Kp = 300.               # proportional gain (P of PD)
 Kv = 2 * np.sqrt(Kp)   # derivative gain (D of PD)
+
+GRASP_FORCE = 90.0  # Squeeze force along world Y-axis
+LIFT_FORCE = 45.0   # Lifting force along world Z-axis
 
 def controllaw(sim, robot, trajs, tcurrent, cube):
     q, vq = sim.getpybulletstate()
@@ -29,18 +33,35 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
 
     print(f"t: {tcurrent:.2f}, max error: {np.max(np.abs(err_q)):.4f}")
 
-    # Compute dynamics matrices
-    # M(q)
     M = pin.crba(robot.model, robot.data, q)
-    # h(q, vq) = C(q, vq)vq + g(q)
     nle = pin.nle(robot.model, robot.data, q, vq)
 
-    # PD control law with feedforward (Inverse Dynamics)
-    # aq_des = aq_ref - Kp * (q - q_ref) - Kv * (vq - vq_ref)
     aq_des = aq_ref - Kp * err_q - Kv * err_vq
+    tau_motion = M @ aq_des + nle
     
-    # Torque command: tau = M * aq_des + nle
-    tau = M @ aq_des + nle
+    pin.framesForwardKinematics(robot.model, robot.data, q)
+    pin.computeJointJacobians(robot.model, robot.data, q)
+
+    # Get frame IDs for hands
+    left_hand_id = robot.model.getFrameId(LEFT_HAND)
+    right_hand_id = robot.model.getFrameId(RIGHT_HAND)
+
+    # Get Jacobians in world frame
+    J_L = pin.getFrameJacobian(robot.model, robot.data, left_hand_id, pin.LOCAL_WORLD_ALIGNED)
+    J_R = pin.getFrameJacobian(robot.model, robot.data, right_hand_id, pin.LOCAL_WORLD_ALIGNED)
+
+    # Define 6D force vectors [fx, fy, fz, tx, ty, tz]
+    # Left hand: squeezes in +Y, lifts in +Z
+    f_L_vec = np.array([0, -GRASP_FORCE, LIFT_FORCE, 0, 0, 0])
+    # Right hand: squeezes in -Y, lifts in +Z
+    f_R_vec = np.array([0, GRASP_FORCE, LIFT_FORCE, 0, 0, 0])
+
+    # Compute torques from forces: tau_force = J^T * f
+    tau_force = J_L.T @ f_L_vec + J_R.T @ f_R_vec
+
+    # --- 3. Combine Torques ---
+    # Final torque is motion + external forces 
+    tau = tau_motion + tau_force
 
     # Convert to list for pybullet
     torques_list = tau.tolist()

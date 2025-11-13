@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Wed Sep  6 15:32:51 2023
-
-@author: stonneau
-"""
 
 import numpy as np
 import pinocchio as pin
 from bezier import Bezier
 from path import computepath
 from config import LEFT_HAND, RIGHT_HAND
+from tools import setcubeplacement
     
-# in my solution these gains were good enough for all joints but you might want to tune this.
 Kp = 300.               # proportional gain (P of PD)
 Kv = 2 * np.sqrt(Kp)   # derivative gain (D of PD)
 
@@ -91,14 +86,11 @@ def maketraj(path, T):
 if __name__ == "__main__":
         
     from tools import setupwithpybullet, setupwithpybulletandmeshcat, rununtil
-    from config import DT
+    from config import DT, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
     from setup_meshcat import updatevisuals
+    from inverse_geometry import computeqgrasppose
     
     robot, sim, cube, viz = setupwithpybulletandmeshcat()
-    
-    from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET    
-    from inverse_geometry import computeqgrasppose
-    from path import computepath
     
     q0, successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
     qe, successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET, None)
@@ -117,13 +109,29 @@ if __name__ == "__main__":
     sim.setqsim(q0)
 
     #create trajectory
-    total_time = 4.
+    total_time = 3.
     trajs = maketraj(path, total_time)   
     tcur = 0.
 
+    pin.forwardKinematics(robot.model, robot.data, q0)
+    pin.updateFramePlacements(robot.model, robot.data)
+    fid = robot.model.getFrameId(LEFT_HAND)
+    T_world_ee0 = robot.data.oMf[fid]
+    T_ee_cube = T_world_ee0.inverse() * CUBE_PLACEMENT
+
     while tcur < total_time:
         rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
-        updatevisuals(viz, robot, cube, trajs[0](tcur))
+
+        #(Meshcat for comparison)compute current desired robot configuration and update
+        q_des = trajs[0](tcur)
+        pin.forwardKinematics(robot.model, robot.data, q_des)
+        pin.updateFramePlacements(robot.model, robot.data)
+        #we use relative position to visualize cube
+        T_world_ee = robot.data.oMf[fid]
+        T_world_cube = T_world_ee * T_ee_cube
+        setcubeplacement(robot, cube, T_world_cube)
+
+        updatevisuals(viz, robot, cube, q_des)
         tcur += DT
         
     print("Control loop completed successfully!")

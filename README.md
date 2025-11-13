@@ -9,7 +9,7 @@ BFGS optimisation is used to minimise error between the robot’s hand poses and
 Joint limits are enforced, and collision checks ensure feasible configurations.
 
 ## path.py
-RRT is used for path planning, which samples valid cube placements within a reachable space, and computes valid robot grasp configurations via `computeqgrasppose`. The planner interpolates cube translations linearly, and searches for a valid path to the goal.
+Following the algorithm taught in tutorial, RRT is used for path planning, which samples valid cube placements within a reachable space, and computes valid robot grasp configurations via `computeqgrasppose`. The planner interpolates cube translations linearly, and searches for a valid path to the goal.
 
 We implemented nearest-neighbour search, and attempted path shortcutting (local optimisation to remove redundant nodes). The `shortcut` was partially implemented then disabled due to issues handling SE(3) frames.
 
